@@ -1,6 +1,12 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Any, Dict
+from datetime import datetime
+
+from schemas import ContactInquiry
+from database import create_document
 
 app = FastAPI()
 
@@ -19,6 +25,25 @@ def read_root():
 @app.get("/api/hello")
 def hello():
     return {"message": "Hello from the backend API!"}
+
+@app.post("/api/contact")
+async def submit_contact(inquiry: ContactInquiry) -> Dict[str, Any]:
+    """Accept contact form submissions, persist to DB, and log a notification."""
+    try:
+        doc_id = create_document("contactinquiry", inquiry)
+
+        # Lightweight notification: append to a log file
+        log_line = f"[{datetime.utcnow().isoformat()}] CONTACT from {inquiry.name} <{inquiry.email}> | Business: {inquiry.business_name or '-'} | {len(inquiry.message)} chars\n"
+        try:
+            with open("logs/contact.log", "a") as f:
+                f.write(log_line)
+        except Exception:
+            # If logging fails, continue without crashing the request
+            pass
+
+        return {"status": "ok", "id": doc_id, "message": "Thanks! We'll be in touch shortly."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/test")
 def test_database():
